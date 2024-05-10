@@ -7,6 +7,8 @@ import { spawn } from 'child_process';
 import { cacheDir } from '../utils/cache-directory';
 import { Task } from '../config/task-graph';
 import { machineId } from 'node-machine-id';
+import * as fsPromise from 'fs/promises';
+import * as fs from 'fs';
 
 export type CachedResult = {
   terminalOutput: string;
@@ -85,13 +87,24 @@ export class Cache {
     outputs: string[],
     code: number
   ) {
+    const stack = new Error();
+
     return this.tryAndRetry(async () => {
       const td = join(this.cachePath, task.hash);
       const tdCommit = join(this.cachePath, `${task.hash}.commit`);
 
       // might be left overs from partially-completed cache invocations
-      await this.remove(tdCommit);
-      await this.remove(td);
+      if (process.env.NX_VERBOSE_LOGGING == 'true') {
+        console.log(
+          `going to call put, but removing tdCommit first ${tdCommit}`
+        );
+      }
+      await this.remove(tdCommit, stack);
+
+      if (process.env.NX_VERBOSE_LOGGING == 'true') {
+        console.log(`going to call put, but removing td first ${td}`);
+      }
+      await this.remove(td, stack);
 
       await mkdir(td);
       await writeFile(
@@ -202,13 +215,65 @@ export class Cache {
     });
   }
 
-  private async remove(path: string): Promise<void> {
+  private async remove(path: string, stackForDebugging?: Error): Promise<void> {
     const { remove } = require('../native');
+
+    function tryToGetOwnerFromUid(uid: number) {
+      try {
+        return require('os').userInfo(uid);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function runErrorChecks(e: Error) {
+      if (process.env.NX_VERBOSE_LOGGING == 'true') {
+        console.log(`Error removing ${path}`, {
+          message: e?.message,
+          stackForDebugging: stackForDebugging?.stack,
+        });
+
+        try {
+          const fileExists = await new Promise((resolve) => {
+            fs.exists(path, (exists) => {
+              resolve(exists);
+            });
+          });
+          const doesPathExist = await pathExists(path);
+          const stat = await fsPromise.stat(path);
+          const pathType = stat.isFile()
+            ? 'file'
+            : stat.isDirectory()
+            ? 'directory'
+            : 'unknown';
+
+          const permissionOfDirectory = stat.mode.toString(8).slice(-3);
+
+          const fileSizeInBytes = stat.size;
+
+          console.log(`fs.stat for ${path} that errored`, {
+            pathType,
+            permissionOfDirectory,
+            uid: stat.uid,
+            gid: stat.gid,
+            ownerInfo: tryToGetOwnerFromUid(stat.uid),
+            fileSizeInBytes,
+            fileExists,
+            doesPathExist,
+          });
+        } catch (statErr) {
+          console.error(`Error removing ${path} - stat`);
+          console.error(statErr);
+        }
+      }
+    }
+
     return new Promise((res, rej) => {
       try {
         remove(path);
         res();
       } catch (e) {
+        runErrorChecks(e);
         rej(e);
       }
     });
