@@ -48,6 +48,7 @@ import { ESLintUtils } from '@typescript-eslint/utils';
 type Options = [
   {
     allow: string[];
+    allowCircularDependencyForProjects: string[];
     buildTargets: string[];
     depConstraints: DepConstraint[];
     enforceBuildableLibDependency: boolean;
@@ -100,6 +101,10 @@ export default ESLintUtils.RuleCreator(
           banTransitiveDependencies: { type: 'boolean' },
           checkNestedExternalImports: { type: 'boolean' },
           allow: { type: 'array', items: { type: 'string' } },
+          allowCircularDependencyForProjects: {
+            type: 'array',
+            items: { type: 'string' },
+          },
           buildTargets: { type: 'array', items: { type: 'string' } },
           depConstraints: {
             type: 'array',
@@ -192,6 +197,7 @@ export default ESLintUtils.RuleCreator(
       checkDynamicDependenciesExceptions: [],
       banTransitiveDependencies: false,
       checkNestedExternalImports: false,
+      allowCircularDependencyForProjects: [],
     },
   ],
   create(
@@ -206,6 +212,7 @@ export default ESLintUtils.RuleCreator(
         checkDynamicDependenciesExceptions,
         banTransitiveDependencies,
         checkNestedExternalImports,
+        allowCircularDependencyForProjects,
       },
     ]
   ) {
@@ -489,7 +496,8 @@ export default ESLintUtils.RuleCreator(
       const circularPath = checkCircularPath(
         projectGraph,
         sourceProject,
-        targetProject
+        targetProject,
+        allowCircularDependencyForProjects
       );
       if (circularPath.length !== 0) {
         const circularFilePath = findFilesInCircularPath(

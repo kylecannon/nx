@@ -9,6 +9,7 @@ import {
   fileDataDepTarget,
   fileDataDepType,
 } from 'nx/src/config/project-graph';
+import { source } from '@angular-devkit/schematics';
 
 interface Reach {
   graph: ProjectGraph;
@@ -134,11 +135,24 @@ export function pathExists(
 export function checkCircularPath(
   graph: ProjectGraph,
   sourceProject: ProjectGraphProjectNode,
-  targetProject: ProjectGraphProjectNode
+  targetProject: ProjectGraphProjectNode,
+  projectsToIgnore: string[] = []
 ): ProjectGraphProjectNode[] {
+  if (projectsToIgnore.includes(targetProject.name)) return [];
+  if (projectsToIgnore.includes(sourceProject.name)) return [];
   if (!graph.nodes[targetProject.name]) return [];
 
-  return getPath(graph, targetProject.name, sourceProject.name);
+  const path = getPath(graph, targetProject.name, sourceProject.name);
+
+  let ignorePath = false;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (projectsToIgnore.includes(path[i].name)) {
+      ignorePath = true;
+      break;
+    }
+  }
+
+  return ignorePath ? [] : path;
 }
 
 export function findFilesInCircularPath(
