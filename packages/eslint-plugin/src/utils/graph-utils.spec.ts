@@ -186,7 +186,11 @@ function transformGraph(graph: SimplifiedGraph): ProjectGraph {
   };
 }
 
-function getPath(graph: ProjectGraph, node: { from: string; to: string }) {
+function getPath(
+  graph: ProjectGraph,
+  node: { from: string; to: string },
+  projectsToIgnore: string[] = []
+) {
   const src = graph.nodes[node.to];
   const dest = graph.nodes[node.from];
   const path = checkCircularPath(graph, src, dest);
