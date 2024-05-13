@@ -1679,6 +1679,245 @@ Circular file chain:
     expect(failures[1].message).toEqual(message);
   });
 
+  it('should not error when circular dependency detected but a project is marked as ignored', () => {
+    const failures = runRule(
+      {
+        allowCircularDependencyForProjects: ['allowedCircularLibName'],
+      },
+      `${process.cwd()}/proj/libs/anotherlib/src/main.ts`,
+      `
+        import '@mycompany/mylib';
+        import('@mycompany/mylib');
+      `,
+      {
+        nodes: {
+          mylibName: {
+            name: 'mylibName',
+            type: 'lib',
+            data: {
+              root: 'libs/mylib',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+          allowedCircularLibName: {
+            name: 'allowedCircularLibName',
+            type: 'lib',
+            data: {
+              root: 'libs/allowedcircularlib',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+          anotherlibName: {
+            name: 'anotherlibName',
+            type: 'lib',
+            data: {
+              root: 'libs/anotherlib',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+          myappName: {
+            name: 'myappName',
+            type: 'app',
+            data: {
+              root: 'apps/myapp',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+        },
+        dependencies: {
+          mylibName: [
+            {
+              source: 'mylibName',
+              target: 'allowedCircularLibName',
+              type: DependencyType.static,
+            },
+          ],
+          allowedCircularLibName: [
+            {
+              source: 'allowedCircularLibName',
+              target: 'anotherlibName',
+              type: DependencyType.static,
+            },
+          ],
+          anotherlibName: [
+            {
+              source: 'anotherlibName',
+              target: 'mylibName',
+              type: DependencyType.static,
+            },
+          ],
+        },
+      },
+      {
+        mylibName: [
+          createFile(`libs/mylib/src/main.ts`, ['allowedCircularLibName']),
+        ],
+        allowedCircularLibName: [
+          createFile(`libs/allowedcircularlib/src/main.ts`, ['anotherlibName']),
+        ],
+        anotherlibName: [
+          createFile(`libs/anotherlib/src/main.ts`, ['mylibName']),
+        ],
+        myappName: [createFile(`apps/myapp/src/index.ts`)],
+      }
+    );
+
+    //     const message = `Circular dependency between "anotherlibName" and "mylibName" detected: anotherlibName -> mylibName -> anotherlibName
+    //
+    // Circular file chain:
+    // - libs/anotherlib/src/main.ts
+    // - libs/mylib/src/main.ts`;
+    expect(failures.length).toEqual(0);
+    // expect(failures[0].message).toEqual(message);
+    // expect(failures[1].message).toEqual(message);
+  });
+
+  it('should error when a circular dependency detected in two projects, but one project is marked as ignored', () => {
+    const failures = runRule(
+      {
+        allowCircularDependencyForProjects: ['allowedCircularLibName'],
+      },
+      `${process.cwd()}/proj/libs/anotherlib/src/main.ts`,
+      `
+        import '@mycompany/mylib';
+        import('@mycompany/mylib');
+      `,
+      {
+        nodes: {
+          mylibName: {
+            name: 'mylibName',
+            type: 'lib',
+            data: {
+              root: 'libs/mylib',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+          mySecondLibName: {
+            name: 'mySecondLibName',
+            type: 'lib',
+            data: {
+              root: 'libs/mysecondlib',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+          allowedCircularLibName: {
+            name: 'allowedCircularLibName',
+            type: 'lib',
+            data: {
+              root: 'libs/allowedcircularlib',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+          anotherlibName: {
+            name: 'anotherlibName',
+            type: 'lib',
+            data: {
+              root: 'libs/anotherlib',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+          myappName: {
+            name: 'myappName',
+            type: 'app',
+            data: {
+              root: 'apps/myapp',
+              tags: [],
+              implicitDependencies: [],
+              targets: {},
+            },
+          },
+        },
+        dependencies: {
+          mylibName: [
+            {
+              source: 'mylibName',
+              target: 'allowedCircularLibName',
+              type: DependencyType.static,
+            },
+            {
+              source: 'mylibName',
+              target: 'mySecondLibName',
+              type: DependencyType.static,
+            },
+          ],
+          mySecondLibName: [
+            {
+              source: 'mySecondLibName',
+              target: 'anotherlibName',
+              type: DependencyType.static,
+            },
+          ],
+          allowedCircularLibName: [
+            {
+              source: 'allowedCircularLibName',
+              target: 'anotherlibName',
+              type: DependencyType.static,
+            },
+          ],
+          anotherlibName: [
+            {
+              source: 'anotherlibName',
+              target: 'mylibName',
+              type: DependencyType.static,
+            },
+            {
+              source: 'anotherlibName',
+              target: 'mySecondLibName',
+              type: DependencyType.static,
+            },
+          ],
+        },
+      },
+      {
+        mylibName: [
+          createFile(`libs/mylib/src/main.ts`, [
+            'allowedCircularLibName',
+            'mySecondLibName',
+          ]),
+        ],
+        mySecondLibName: [
+          createFile(`libs/mysecondlib/src/main.ts`, ['anotherlibName']),
+        ],
+        allowedCircularLibName: [
+          createFile(`libs/allowedcircularlib/src/main.ts`, ['anotherlibName']),
+        ],
+        anotherlibName: [
+          createFile(`libs/anotherlib/src/main.ts`, [
+            'mylibName',
+            'mySecondLibName',
+          ]),
+        ],
+        myappName: [createFile(`apps/myapp/src/index.ts`)],
+      }
+    );
+
+    const message = `Circular dependency between "anotherlibName" and "mylibName" detected: anotherlibName -> mylibName -> mySecondLibName -> anotherlibName
+
+Circular file chain:
+- libs/anotherlib/src/main.ts
+- libs/mylib/src/main.ts
+- libs/mysecondlib/src/main.ts`;
+    expect(failures.length).toEqual(2);
+    expect(failures[0].message).toEqual(message);
+    expect(failures[1].message).toEqual(message);
+  });
+
   it('should error when circular dependency detected (indirect)', () => {
     const failures = runRule(
       {},
