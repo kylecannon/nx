@@ -349,7 +349,7 @@ export async function generateGraph(
         splitArgsIntoNxArgsAndOverrides(
           args,
           'affected',
-          { printWarnings: true },
+          { printWarnings: args.file !== 'stdout' },
           readNxJson()
         ).nxArgs,
         rawGraph
@@ -401,6 +401,7 @@ export async function generateGraph(
           2
         )
       );
+      await output.drain();
       process.exit(0);
     }
 
@@ -444,7 +445,7 @@ export async function generateGraph(
       );
       html = html.replace(/src="/g, 'src="static/');
       html = html.replace(/href="styles/g, 'href="static/styles');
-      html = html.replace('<base href="/" />', '');
+      html = html.replace(/<base href="\/".*>/g, '');
       html = html.replace(/type="module"/g, '');
 
       writeFileSync(fullFilePath, html);

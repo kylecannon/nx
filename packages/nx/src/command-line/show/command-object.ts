@@ -123,15 +123,15 @@ const showProjectsCommand: CommandModule<NxShowArgs, ShowProjectsOptions> = {
         '$0 show projects --affected --exclude=*-e2e',
         'Show affected projects in the workspace, excluding end-to-end projects'
       ) as any,
-  handler: (args) => {
-    return handleErrors(
+  handler: async (args) => {
+    const exitCode = await handleErrors(
       args.verbose ?? process.env.NX_VERBOSE_LOGGING === 'true',
       async () => {
         const { showProjectsHandler } = await import('./projects');
         await showProjectsHandler(args);
-        process.exit(0);
       }
     );
+    process.exit(exitCode);
   },
 };
 
@@ -145,10 +145,10 @@ const showProjectCommand: CommandModule<NxShowArgs, ShowProjectOptions> = {
         alias: 'p',
         description: 'Which project should be viewed?',
       })
-      .default('json', true)
       .option('web', {
         type: 'boolean',
-        description: 'Show project details in the browser',
+        description:
+          'Show project details in the browser. (default when interactive)',
       })
       .option('open', {
         type: 'boolean',
@@ -157,8 +157,15 @@ const showProjectCommand: CommandModule<NxShowArgs, ShowProjectOptions> = {
         implies: 'web',
       })
       .check((argv) => {
-        if (argv.web) {
-          argv.json = false;
+        // If TTY is enabled, default to web. Otherwise, default to JSON.
+        const alreadySpecified =
+          argv.web !== undefined || argv.json !== undefined;
+        if (!alreadySpecified) {
+          if (process.stdout.isTTY) {
+            argv.web = true;
+          } else {
+            argv.json = true;
+          }
         }
         return true;
       })
@@ -170,14 +177,14 @@ const showProjectCommand: CommandModule<NxShowArgs, ShowProjectOptions> = {
         '$0 show project my-app --web',
         'View project information for my-app in the browser'
       ),
-  handler: (args) => {
-    return handleErrors(
+  handler: async (args) => {
+    const exitCode = await handleErrors(
       args.verbose ?? process.env.NX_VERBOSE_LOGGING === 'true',
       async () => {
         const { showProjectHandler } = await import('./project');
         await showProjectHandler(args);
-        process.exit(0);
       }
     );
+    process.exit(exitCode);
   },
 };

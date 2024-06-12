@@ -602,7 +602,7 @@ export function addCompatToFlatConfig(content: string) {
   if (result.includes('const compat = new FlatCompat')) {
     return result;
   }
-  result = addImportToFlatConfig(result, 'FlatCompat', '@eslint/eslintrc');
+  result = addImportToFlatConfig(result, ['FlatCompat'], '@eslint/eslintrc');
   const index = result.indexOf('module.exports');
   return applyChangesToString(result, [
     {
@@ -768,7 +768,7 @@ export function generateFlatOverride(
   ) {
     if (override.parserOptions) {
       const { parserOptions, ...rest } = override;
-      return generateAst({ ...rest, languageSettings: { parserOptions } });
+      return generateAst({ ...rest, languageOptions: { parserOptions } });
     }
     return generateAst(override);
   }
@@ -800,7 +800,7 @@ export function generateFlatOverride(
   );
 
   if (parserOptions) {
-    addTSObjectProperty(objectLiteralElements, 'languageSettings', {
+    addTSObjectProperty(objectLiteralElements, 'languageOptions', {
       parserOptions,
     });
   }
