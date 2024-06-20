@@ -1,5 +1,6 @@
 ---
 title: What if Nx Plugins Were More Like VSCode Extensions
+slug: 'what-if-nx-plugins-were-more-like-vscode-extensions'
 authors: [Juri Strumpflohner]
 cover_image: '/blog/images/2024-02-05/featured_img.png'
 tags: [nx, releases]
@@ -182,6 +183,6 @@ We just released Project Crystal, so this is just the beginning of it. While weâ
 
 - [Nx Docs](/getting-started/intro)
 - [Nx GitHub](https://github.com/nrwl/nx)
-- [Nx Official Discord Server](/community)
+- [Nx Official Discord Server](https://go.nx.dev/community)
 - [Nx Youtube Channel](https://www.youtube.com/@nxdevtools)
 - [Speed up your CI](https://nx.app/)

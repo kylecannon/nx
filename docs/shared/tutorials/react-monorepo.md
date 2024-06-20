@@ -28,7 +28,7 @@ Nx Plugins are optional packages that extend the capabilities of Nx, catering to
 
 Features of an integrated monorepo:
 
-- [Install dependencies at the root by default](/concepts/more-concepts/dependency-management#single-version-policy)
+- [Install dependencies at the root by default](/concepts/decisions/dependency-management#single-version-policy)
 - [Scaffold new code with generators](/features/generate-code)
 - [Updates dependencies with automated migrations](/features/automate-updating-dependencies)
 
@@ -103,7 +103,7 @@ The setup includes..
 - ESLint preconfigured
 - Jest preconfigured
 
-Typically, an integrated Nx workspace places application projects in the `apps` folder and library projects in the `libs` folder. [Applications are encouraged to be as light-weight as possible](/concepts/more-concepts/applications-and-libraries) so that more code is pushed into libraries and can be reused in other projects. This folder structure is just a suggestion and can be modified to suit your organization's needs.
+Typically, an integrated Nx workspace places application projects in the `apps` folder and library projects in the `libs` folder. Applications are encouraged to be as light-weight as possible so that more code is pushed into libraries and can be reused in other projects. This folder structure is just a suggestion and can be modified to suit your organization's needs.
 
 The [`nx.json` file](/reference/nx-json) contains configuration settings for Nx itself and global default settings that individual projects inherit. The `apps/react-store/project.json` file contains [settings that are specific to the `react-store` project](/reference/project-configuration). We'll examine that file more in the next section.
 
@@ -585,7 +585,7 @@ export default App;
 
 <!-- {% video-link link="https://youtu.be/OQ-Zc5tcxJE?t=1416" /%} -->
 
-Nx automatically detects the dependencies between the various parts of your workspace and builds a [project graph](/features/explore-graph). This graph is used by Nx to perform various optimizations such as determining the correct order of execution when running tasks like `nx build`, identifying [affected projects](/features/run-tasks#run-tasks-affected-by-a-pr) and more. Interestingly you can also visualize it.
+Nx automatically detects the dependencies between the various parts of your workspace and builds a [project graph](/features/explore-graph). This graph is used by Nx to perform various optimizations such as determining the correct order of execution when running tasks like `nx build`, identifying [affected projects](/features/run-tasks#run-tasks-on-projects-affected-by-a-pr) and more. Interestingly you can also visualize it.
 
 Just run:
 
@@ -1081,7 +1081,7 @@ This tutorial walked you through how Nx can improve the local development experi
 - Nx Agents [efficiently distribute tasks across machines](/ci/concepts/parallelization-distribution) ensuring constant CI time regardless of the repository size. The right number of machines is allocated for each PR to ensure good performance without wasting compute.
 - Nx Atomizer [automatically splits](/ci/features/split-e2e-tasks) large e2e tests to distribute them across machines. Nx can also automatically [identify and rerun flaky e2e tests](/ci/features/flaky-tasks).
 
-### Generating a CI Workflow
+### Generate a CI Workflow
 
 If you are starting a new project, you can use the following command to generate a CI workflow file.
 
@@ -1101,24 +1101,24 @@ The key line in the CI pipeline is:
 - run: npx nx affected -t lint test build e2e-ci
 ```
 
-### Connecting to Nx Cloud
+### Connect to Nx Cloud
 
 Nx Cloud is a companion app for your CI system that provides remote caching, task distribution, e2e tests deflaking, better DX and more.
 
 To connect to Nx Cloud:
 
-- Commit and push your changes to GitHub
+- Commit and push your changes
 - Go to [https://cloud.nx.app](https://cloud.nx.app), create an account, and connect your repository
 
-![Connect to your repository](/shared/tutorials/connect-to-repository.webp)
+#### Connect to Nx Cloud Manually
 
-`cloud.nx.app` will send a PR to your repository enabling Nx Cloud, after which caching, distribution and more will start working.
+If you are not able to connect via the automated process at [https://cloud.nx.app](https://cloud.nx.app), you can connect your workspace manually by running:
 
-![Add an Nx Cloud access token to your repository dialog](/shared/tutorials/send-cloud-pr.webp)
+```shell
+npx nx connect
+```
 
-Once you merge that PR, you'll be able to see CI pipeline runs appearing in the Nx Cloud dashboard:
-
-![CI Pipeline Executions](/shared/tutorials/ci-pipeline-executions.webp)
+You will then need to merge your changes and connect to your workspace on [https://cloud.nx.app](https://cloud.nx.app).
 
 ### Enable a Distributed CI Pipeline
 
@@ -1127,8 +1127,6 @@ The current CI pipeline runs on a single machine and can only handle small works
 ```yml
 - run: npx nx-cloud start-ci-run --distribute-on="5 linux-medium-js" --stop-agents-after="e2e-ci"
 ```
-
-![Run details](/shared/tutorials/gradle-run-details.webp)
 
 For more information about how Nx can improve your CI pipeline, check out one of these detailed tutorials:
 

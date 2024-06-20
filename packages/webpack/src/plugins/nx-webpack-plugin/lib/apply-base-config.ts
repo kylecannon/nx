@@ -197,6 +197,20 @@ function applyNxIndependentConfig(
     moduleTrace: !!options.verbose,
     usedExports: !!options.verbose,
   };
+
+  /**
+   * Initialize properties that get set when webpack is used during task execution.
+   * These properties may be used by consumers who expect them to not be undefined.
+   *
+   * When @nx/webpack/plugin resolves the config, it is not during a task, and therefore
+   * these values are not set, which can lead to errors being thrown when reading
+   * the webpack options from the resolved file.
+   */
+  config.entry ??= {};
+  config.resolve ??= {};
+  config.module ??= {};
+  config.plugins ??= [];
+  config.externals ??= [];
 }
 
 function applyNxDependentConfig(
@@ -205,9 +219,8 @@ function applyNxDependentConfig(
   { useNormalizedEntry }: { useNormalizedEntry?: boolean } = {}
 ): void {
   const tsConfig = options.tsConfig ?? getRootTsConfigPath();
-  const plugins: WebpackPluginInstance[] = [
-    new NxTsconfigPathsWebpackPlugin({ tsConfig }),
-  ];
+  const plugins: WebpackPluginInstance[] = [];
+
   const executorContext: Partial<ExecutorContext> = {
     projectName: options.projectName,
     targetName: options.targetName,
@@ -215,6 +228,8 @@ function applyNxDependentConfig(
     configurationName: options.configurationName,
     root: options.root,
   };
+
+  plugins.push(new NxTsconfigPathsWebpackPlugin({ ...options, tsConfig }));
 
   if (!options?.skipTypeChecking) {
     const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');

@@ -1,5 +1,6 @@
 ---
 title: Fast, Effortless CI
+slug: 'fast-effortless-ci'
 authors: [Isaac Mann]
 cover_image: '/blog/images/2024-02-07/featured_img.png'
 tags: [nx, nx-cloud, release]
@@ -91,7 +92,7 @@ jobs:
 
 The only reason to modify this file is if you need to change the number of agent machines or there is another type of task that needs to run in CI.
 
-The `linux-medium-js` name in the CI configuration refers to a built-in launch template that Nx provides. If you can not find a template in [the default list](https://github.com/nrwl/nx-cloud-workflows/blob/main/launch-templates/linux.yaml) that meets your needs, you can provide your own. [With a single yaml file](/ci/features/distribute-task-execution#launch-templates), you can set up your agent environment in exactly the way you want with your own launch template.
+The `linux-medium-js` name in the CI configuration refers to a built-in launch template that Nx provides. If you can not find a template in [the default list](https://github.com/nrwl/nx-cloud-workflows/blob/main/launch-templates/linux.yaml) that meets your needs, you can provide your own. [With a single yaml file](/ci/reference/launch-templates), you can set up your agent environment in exactly the way you want with your own launch template.
 
 ## Dynamically Allocate Agents
 
@@ -101,7 +102,7 @@ Nx understands that some CI pipelines need more resources than others. To accoun
 
 ## Automatically Split E2E Tasks by File
 
-Typically, e2e tests are the tasks that take the longest in CI. In order to take advantage of parallelization and task distribution, these large tasks would need to be split into smaller tasks, but doing this manually would involve duplicating a lot of configuration code and making sure to keep that configuration synchronized. Nx 18’s [Project Crystal](/blog/2024-02-05-nx-18-project-crystal) allows you to [automatically create separate Cypress and Playwright tasks](/ci/features/split-e2e-tasks) for each spec file in the e2e project. These individual tasks can all be triggered by running the `e2e-ci` task. What was once a tedious manual process can now be done for you automatically.
+Typically, e2e tests are the tasks that take the longest in CI. In order to take advantage of parallelization and task distribution, these large tasks would need to be split into smaller tasks, but doing this manually would involve duplicating a lot of configuration code and making sure to keep that configuration synchronized. Nx 18’s [Project Crystal](/blog/what-if-nx-plugins-were-more-like-vscode-extensions) allows you to [automatically create separate Cypress and Playwright tasks](/ci/features/split-e2e-tasks) for each spec file in the e2e project. These individual tasks can all be triggered by running the `e2e-ci` task. What was once a tedious manual process can now be done for you automatically.
 
 ![](/blog/images/2024-02-07/bodyimg3.webp)
 
@@ -121,6 +122,6 @@ If you have a task that can’t be run on Nx Agents for some reason, you can eas
 
 - [Nx Docs](/getting-started/intro)
 - [Nx GitHub](https://github.com/nrwl/nx)
-- [Nx Official Discord Server](/community)
+- [Nx Official Discord Server](https://go.nx.dev/community)
 - [Nx Youtube Channel](https://www.youtube.com/@nxdevtools)
 - [Speed up your CI](https://nx.app/)

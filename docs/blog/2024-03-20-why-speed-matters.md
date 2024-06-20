@@ -1,6 +1,7 @@
 ---
 title: Monorepos - Why Speed Matters
-authors: ['Katerina Skroumpelou']
+slug: 'monorepos-why-speed-matters'
+authors: ['Katerina Skroumpelou', 'Jeff Cross']
 tags: nx, nxdevtools, speed, ci
 cover_image: '/blog/images/2024-03-20/featured_img.png'
 ---
@@ -99,6 +100,6 @@ Nx provides an unparalleled toolkit for developers and teams looking to optimize
 - [X / Twitter](https://twitter.com/nxdevtools)
 - [LinkedIn](https://www.linkedin.com/company/nrwl)
 - [Nx GitHub](https://github.com/nrwl/nx)
-- [Nx Community Discord](/community)
+- [Nx Community Discord](https://go.nx.dev/community)
 - [Nx Youtube Channel](https://www.youtube.com/@nxdevtools)
 - [Speed up your CI](https://nx.app)

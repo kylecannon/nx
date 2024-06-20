@@ -1,5 +1,6 @@
 ---
 title: Nx Console gets Lit
+slug: 'nx-console-gets-lit'
 authors: [Max Kless]
 cover_image: '/blog/images/2023-06-29/featured_img.webp'
 tags: [nx, nx-console]
@@ -332,6 +333,6 @@ If the prettier UI and better performance haven’t convinced you, this surely w
 - [Nx Docs](/getting-started/intro)
 - [X/Twitter](https://twitter.com/nxdevtools) -- [LinkedIn](https://www.linkedin.com/company/nrwl/)
 - [Nx GitHub](https://github.com/nrwl/nx)
-- [Nx Official Discord Server](/community)
+- [Nx Official Discord Server](https://go.nx.dev/community)
 - [Nx Youtube Channel](https://www.youtube.com/@nxdevtools)
 - [Speed up your CI](https://nx.app/)

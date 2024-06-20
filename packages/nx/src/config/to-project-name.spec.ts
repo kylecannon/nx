@@ -26,9 +26,11 @@ describe('Workspaces', () => {
       await fs.createFiles({
         'packages/my-package/package.json': JSON.stringify({
           name: 'my-package',
+          description: 'my-package description',
         }),
         'package.json': JSON.stringify({
           name: 'package-name',
+          description: 'package description',
           workspaces: ['packages/**'],
         }),
       });
@@ -42,7 +44,7 @@ describe('Workspaces', () => {
             readNxJson(fs.tempDir).plugins,
             fs.tempDir
           );
-          const res = retrieveProjectConfigurations(
+          const res = await retrieveProjectConfigurations(
             plugins,
             fs.tempDir,
             readNxJson(fs.tempDir)
@@ -51,21 +53,30 @@ describe('Workspaces', () => {
           return res;
         }
       );
-      console.log(projects);
-      expect(projects['packages/my-package']).toEqual({
-        name: 'my-package',
-        root: 'packages/my-package',
-        sourceRoot: 'packages/my-package',
-        projectType: 'library',
-        targets: {
-          'nx-release-publish': {
-            configurations: {},
-            dependsOn: ['^nx-release-publish'],
-            executor: '@nx/js:release-publish',
-            options: {},
+      expect(projects['packages/my-package']).toMatchInlineSnapshot(`
+        {
+          "metadata": {
+            "description": "my-package description",
+            "targetGroups": {},
           },
-        },
-      });
+          "name": "my-package",
+          "root": "packages/my-package",
+          "sourceRoot": "packages/my-package",
+          "tags": [
+            "npm:public",
+          ],
+          "targets": {
+            "nx-release-publish": {
+              "configurations": {},
+              "dependsOn": [
+                "^nx-release-publish",
+              ],
+              "executor": "@nx/js:release-publish",
+              "options": {},
+            },
+          },
+        }
+      `);
     });
   });
 });

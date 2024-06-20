@@ -1,6 +1,7 @@
 import type { RunCommandsOptions } from 'nx/src/executors/run-commands/run-commands.impl';
 
 import { minimatch } from 'minimatch';
+import { deepStrictEqual } from 'node:assert';
 
 import { forEachExecutorOptions } from '../executor-options-utils';
 import { deleteMatchingProperties } from './plugin-migration-utils';
@@ -16,6 +17,7 @@ import {
   TargetConfiguration,
   Tree,
   CreateNodes,
+  CreateNodesV2,
 } from 'nx/src/devkit-exports';
 
 import {
@@ -25,13 +27,15 @@ import {
   ProjectConfigurationsError,
 } from 'nx/src/devkit-internals';
 import type { ConfigurationResult } from 'nx/src/project-graph/utils/project-configuration-utils';
+import type { InputDefinition } from 'nx/src/config/workspace-json-project-json';
 
 type PluginOptionsBuilder<T> = (targetName: string) => T;
 type PostTargetTransformer = (
   targetConfiguration: TargetConfiguration,
-  tree?: Tree,
-  projectDetails?: { projectName: string; root: string }
-) => TargetConfiguration;
+  tree: Tree,
+  projectDetails: { projectName: string; root: string },
+  inferredTargetConfiguration: TargetConfiguration
+) => TargetConfiguration | Promise<TargetConfiguration>;
 type SkipTargetFilter = (
   targetConfiguration: TargetConfiguration
 ) => [boolean, string];
@@ -49,8 +53,8 @@ class ExecutorToPluginMigrator<T> {
   #targetDefaultsForExecutor: Partial<TargetConfiguration>;
   #targetAndProjectsToMigrate: Map<string, Set<string>>;
   #pluginToAddForTarget: Map<string, ExpandedPluginConfiguration<T>>;
-  #createNodes: CreateNodes<T>;
-  #configFiles: string[];
+  #createNodes?: CreateNodes<T>;
+  #createNodesV2?: CreateNodesV2<T>;
   #createNodesResultsForTargets: Map<string, ConfigurationResult>;
 
   constructor(
@@ -60,7 +64,8 @@ class ExecutorToPluginMigrator<T> {
     pluginPath: string,
     pluginOptionsBuilder: PluginOptionsBuilder<T>,
     postTargetTransformer: PostTargetTransformer,
-    createNodes: CreateNodes<T>,
+    createNodes?: CreateNodes<T>,
+    createNodesV2?: CreateNodesV2<T>,
     specificProjectToMigrate?: string,
     skipTargetFilter?: SkipTargetFilter
   ) {
@@ -71,6 +76,7 @@ class ExecutorToPluginMigrator<T> {
     this.#pluginOptionsBuilder = pluginOptionsBuilder;
     this.#postTargetTransformer = postTargetTransformer;
     this.#createNodes = createNodes;
+    this.#createNodesV2 = createNodesV2;
     this.#specificProjectToMigrate = specificProjectToMigrate;
     this.#skipTargetFilter = skipTargetFilter ?? ((...args) => [false, '']);
   }
@@ -79,7 +85,7 @@ class ExecutorToPluginMigrator<T> {
     await this.#init();
     if (this.#targetAndProjectsToMigrate.size > 0) {
       for (const targetName of this.#targetAndProjectsToMigrate.keys()) {
-        this.#migrateTarget(targetName);
+        await this.#migrateTarget(targetName);
       }
       await this.#addPlugins();
     }
@@ -99,12 +105,12 @@ class ExecutorToPluginMigrator<T> {
     await this.#getCreateNodesResults();
   }
 
-  #migrateTarget(targetName: string) {
+  async #migrateTarget(targetName: string) {
     const include: string[] = [];
     for (const projectName of this.#targetAndProjectsToMigrate.get(
       targetName
     )) {
-      include.push(this.#migrateProject(projectName, targetName));
+      include.push(await this.#migrateProject(projectName, targetName));
     }
 
     this.#pluginToAddForTarget.set(targetName, {
@@ -114,7 +120,7 @@ class ExecutorToPluginMigrator<T> {
     });
   }
 
-  #migrateProject(projectName: string, targetName: string) {
+  async #migrateProject(projectName: string, targetName: string) {
     const projectFromGraph = this.#projectGraph.nodes[projectName];
     const projectConfig = readProjectConfiguration(this.tree, projectName);
 
@@ -130,10 +136,17 @@ class ExecutorToPluginMigrator<T> {
     delete projectTarget.executor;
 
     deleteMatchingProperties(projectTarget, createdTarget);
-    projectTarget = this.#postTargetTransformer(projectTarget, this.tree, {
-      projectName,
-      root: projectFromGraph.data.root,
-    });
+
+    if (projectTarget.inputs && createdTarget.inputs) {
+      this.#mergeInputs(projectTarget, createdTarget);
+    }
+
+    projectTarget = await this.#postTargetTransformer(
+      projectTarget,
+      this.tree,
+      { projectName, root: projectFromGraph.data.root },
+      createdTarget
+    );
 
     if (
       projectTarget.options &&
@@ -159,12 +172,62 @@ class ExecutorToPluginMigrator<T> {
     return `${projectFromGraph.data.root}/**/*`;
   }
 
+  #mergeInputs(
+    target: TargetConfiguration,
+    inferredTarget: TargetConfiguration
+  ) {
+    const isInputInferred = (input: string | InputDefinition) => {
+      return inferredTarget.inputs.some((inferredInput) => {
+        try {
+          deepStrictEqual(input, inferredInput);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    };
+
+    if (target.inputs.every(isInputInferred)) {
+      delete target.inputs;
+      return;
+    }
+
+    const inferredTargetExternalDependencyInput = inferredTarget.inputs.find(
+      (i): i is { externalDependencies: string[] } =>
+        typeof i !== 'string' && 'externalDependencies' in i
+    );
+    if (!inferredTargetExternalDependencyInput) {
+      // plugins should normally have an externalDependencies input, but if it
+      // doesn't, there's nothing to merge
+      return;
+    }
+
+    const targetExternalDependencyInput = target.inputs.find(
+      (i): i is { externalDependencies: string[] } =>
+        typeof i !== 'string' && 'externalDependencies' in i
+    );
+    if (!targetExternalDependencyInput) {
+      // the target doesn't have an externalDependencies input, so we can just
+      // add the inferred one
+      target.inputs.push(inferredTargetExternalDependencyInput);
+    } else {
+      // the target has an externalDependencies input, so we need to merge them
+      targetExternalDependencyInput.externalDependencies = Array.from(
+        new Set([
+          ...targetExternalDependencyInput.externalDependencies,
+          ...inferredTargetExternalDependencyInput.externalDependencies,
+        ])
+      );
+    }
+  }
+
   async #pluginRequiresIncludes(
     targetName: string,
     plugin: ExpandedPluginConfiguration<T>
   ) {
     const loadedPlugin = new LoadedNxPlugin(
       {
+        createNodesV2: this.#createNodesV2,
         createNodes: this.#createNodes,
         name: this.#pluginPath,
       },
@@ -284,8 +347,9 @@ class ExecutorToPluginMigrator<T> {
   }
 
   #getTargetDefaultsForExecutor() {
-    this.#targetDefaultsForExecutor =
-      this.#nxJson.targetDefaults?.[this.#executor];
+    this.#targetDefaultsForExecutor = structuredClone(
+      this.#nxJson.targetDefaults?.[this.#executor]
+    );
   }
 
   #getCreatedTargetForProjectRoot(targetName: string, projectRoot: string) {
@@ -314,6 +378,7 @@ class ExecutorToPluginMigrator<T> {
     for (const targetName of this.#targetAndProjectsToMigrate.keys()) {
       const loadedPlugin = new LoadedNxPlugin(
         {
+          createNodesV2: this.#createNodesV2,
           createNodes: this.#createNodes,
           name: this.#pluginPath,
         },
@@ -337,13 +402,38 @@ class ExecutorToPluginMigrator<T> {
         }
       }
 
-      this.#configFiles = Array.from(projectConfigs.matchingProjectFiles);
       this.#createNodesResultsForTargets.set(targetName, projectConfigs);
     }
   }
 }
 
 export async function migrateExecutorToPlugin<T>(
+  tree: Tree,
+  projectGraph: ProjectGraph,
+  executor: string,
+  pluginPath: string,
+  pluginOptionsBuilder: PluginOptionsBuilder<T>,
+  postTargetTransformer: PostTargetTransformer,
+  createNodes: CreateNodesV2<T>,
+  specificProjectToMigrate?: string,
+  skipTargetFilter?: SkipTargetFilter
+): Promise<Map<string, Set<string>>> {
+  const migrator = new ExecutorToPluginMigrator<T>(
+    tree,
+    projectGraph,
+    executor,
+    pluginPath,
+    pluginOptionsBuilder,
+    postTargetTransformer,
+    undefined,
+    createNodes,
+    specificProjectToMigrate,
+    skipTargetFilter
+  );
+  return await migrator.run();
+}
+
+export async function migrateExecutorToPluginV1<T>(
   tree: Tree,
   projectGraph: ProjectGraph,
   executor: string,
@@ -362,6 +452,7 @@ export async function migrateExecutorToPlugin<T>(
     pluginOptionsBuilder,
     postTargetTransformer,
     createNodes,
+    undefined,
     specificProjectToMigrate,
     skipTargetFilter
   );
