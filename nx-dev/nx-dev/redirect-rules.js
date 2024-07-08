@@ -426,7 +426,9 @@ const nxCloudUrls = {
     '/nx-cloud/features/distribute-task-execution',
   '/concepts/affected': '/ci/features/affected',
   '/nx-cloud/private-cloud': '/ci/recipes/enterprise/on-premise',
-  '/nx-cloud/private-cloud/get-started': '/ci/features/on-premise',
+  '/nx-cloud/private-cloud/get-started':
+    '/ci/recipes/enterprise/on-premise/on-premise',
+  '/ci/features/on-premise': '/ci/recipes/enterprise/on-premise/on-premise',
   '/nx-cloud/private-cloud/auth-single-admin':
     '/nx-cloud/recipes/enterprise/on-premise/auth-single-admin',
   '/nx-cloud/private-cloud/auth-github':
@@ -478,6 +480,7 @@ const nxCloudUrls = {
     '/ci/concepts/parallelization-distribution',
   '/nx-cloud/:path*': '/ci/:path*',
   '/core-features/:path*': '/features/:path*',
+  '/ci/recipes/set-up/connect-to-cloud': '/ci/intro/connect-to-cloud',
 };
 
 /**

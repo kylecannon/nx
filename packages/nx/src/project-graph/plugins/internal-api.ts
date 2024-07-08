@@ -159,7 +159,7 @@ export async function loadNxPlugins(
 
   const cleanupFunctions: Array<() => void> = [];
   for (const plugin of plugins) {
-    const [loadedPluginPromise, cleanup] = loadingMethod(plugin, root);
+    const [loadedPluginPromise, cleanup] = await loadingMethod(plugin, root);
     result.push(loadedPluginPromise);
     cleanupFunctions.push(cleanup);
   }
@@ -196,7 +196,6 @@ async function normalizePlugins(plugins: PluginConfiguration[], root: string) {
 export async function getDefaultPlugins(root: string) {
   return [
     join(__dirname, '../../plugins/js'),
-    join(__dirname, '../../plugins/target-defaults/target-defaults-plugin'),
     ...(shouldMergeAngularProjects(root, false)
       ? [join(__dirname, '../../adapter/angular-json')]
       : []),
