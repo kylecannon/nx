@@ -8,7 +8,7 @@ import { findNodes } from '@nx/js';
 import { getModifiers } from '@typescript-eslint/type-utils';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
-import ts = require('typescript');
+import * as ts from 'typescript';
 
 function tryReadBaseJson() {
   try {
@@ -32,7 +32,9 @@ export function getBarrelEntryPointByImportScope(
     importScope: string
   ): string[] => {
     // TODO check and warn that the entries of paths[importScope] have no wildcards; that'd be user misconfiguration
-    if (paths[importScope]) return paths[importScope];
+    if (paths[importScope]) {
+      return paths[importScope];
+    }
 
     // accommodate wildcards (it's not glob) https://www.typescriptlang.org/docs/handbook/module-resolution.html#path-mapping
     const result = new Set<string>(); // set ensures there are no duplicates
@@ -69,12 +71,11 @@ export function getBarrelEntryPointProjectNode(
     const potentialEntryPoints = Object.keys(tsConfigBase.compilerOptions.paths)
       .filter((entry) => {
         const sourceFolderPaths = tsConfigBase.compilerOptions.paths[entry];
-        return sourceFolderPaths.some((sourceFolderPath) => {
-          return (
+        return sourceFolderPaths.some(
+          (sourceFolderPath) =>
             sourceFolderPath === projectNode.data.sourceRoot ||
             sourceFolderPath.indexOf(`${projectNode.data.sourceRoot}/`) === 0
-          );
-        });
+        );
       })
       .map((entry) =>
         tsConfigBase.compilerOptions.paths[entry].map((x) => ({
@@ -108,11 +109,15 @@ function hasMemberExport(exportedMember, filePath) {
   );
 }
 
-export function getRelativeImportPath(exportedMember, filePath, basePath) {
+export function getRelativeImportPath(
+  exportedMember: string,
+  filePath: string,
+  basePath: string
+) {
   const status = lstatSync(filePath, {
     throwIfNoEntry: false,
   });
-  if (!status /*not existed, but probably not full file with an extension*/) {
+  if (!status /* not existed, but probably not full file with an extension */) {
     // try to find an extension that exists
     const ext = ['.ts', '.tsx', '.js', '.jsx'].find((ext) =>
       lstatSync(filePath + ext, { throwIfNoEntry: false })
@@ -213,7 +218,7 @@ export function getRelativeImportPath(exportedMember, filePath, basePath) {
             }
           }
         }
-      } while (!!parent);
+      } while (parent);
     }
 
     if (hasExport) {
@@ -233,6 +238,7 @@ export function getRelativeImportPath(exportedMember, filePath, basePath) {
     sourceFile,
     ts.SyntaxKind.ExportDeclaration
   ) as ts.ExportDeclaration[];
+
   for (const exportDeclaration of exportDeclarations) {
     if ((exportDeclaration as any).moduleSpecifier) {
       // verify whether the export declaration we're looking at is a named export
@@ -270,12 +276,60 @@ export function getRelativeImportPath(exportedMember, filePath, basePath) {
         moduleFilePath = join(dirname(filePath), `${modulePath}/index.ts`);
       }
 
+      const fileExtensionsToTry = ['.ts', '.tsx', '.js', '.jsx'] as const;
+      if (!existsSync(moduleFilePath)) {
+        const potentialFiles = getBarrelEntryPointByImportScope(modulePath);
+
+        for (const potentialFile of potentialFiles) {
+          // if the file exists, we're done
+          if (existsSync(potentialFile)) {
+            moduleFilePath = potentialFile;
+            break;
+          }
+          // if the file has an extension we're done
+          if (
+            fileExtensionsToTry.some((fileExt) =>
+              potentialFile.endsWith(fileExt)
+            )
+          ) {
+            break;
+          }
+          const ext = fileExtensionsToTry.find((fileExt: string) =>
+            lstatSync(`${potentialFile}${fileExt}`, { throwIfNoEntry: false })
+          );
+          if (ext) {
+            moduleFilePath = `${potentialFile}${ext}`;
+            break;
+          }
+        }
+      }
+
+      if (!existsSync(moduleFilePath)) {
+        for (const fileExtensionToTry of fileExtensionsToTry) {
+          if (
+            fileExtensionsToTry.some((fileExt) => modulePath.endsWith(fileExt))
+          ) {
+            continue;
+          }
+          const filePathJoined = join(
+            dirname(filePath),
+            `${modulePath}${fileExtensionToTry}`
+          );
+          // might be a js file.
+          if (existsSync(filePathJoined)) {
+            moduleFilePath = filePathJoined;
+            break;
+          }
+        }
+      }
+
       if (hasMemberExport(exportedMember, moduleFilePath)) {
         const foundFilePath = getRelativeImportPath(
           exportedMember,
           moduleFilePath,
           basePath
         );
+
         if (foundFilePath) {
           return foundFilePath;
         }

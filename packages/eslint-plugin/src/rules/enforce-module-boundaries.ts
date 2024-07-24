@@ -6,14 +6,16 @@ import {
   ProjectGraphProjectNode,
   workspaceRoot,
 } from '@nx/devkit';
+import { isBuiltinModuleImport } from '@nx/js/src/internal';
+// eslint-disable-next-line import/no-unresolved
 import {
   AST_NODE_TYPES,
   ESLintUtils,
   TSESTree,
 } from '@typescript-eslint/utils';
-import { isBuiltinModuleImport } from '@nx/js/src/internal';
 import { isRelativePath } from 'nx/src/utils/fileutils';
 import { basename, dirname, join, relative } from 'path';
+
 import {
   getBarrelEntryPointByImportScope,
   getBarrelEntryPointProjectNode,
@@ -239,7 +241,7 @@ export default ESLintUtils.RuleCreator(
       return {};
     }
 
-    const workspaceLayout = (global as any).workspaceLayout;
+    const { workspaceLayout } = global as any;
 
     function run(
       node:
@@ -309,7 +311,7 @@ export default ESLintUtils.RuleCreator(
               );
 
               if (indexTsPaths && indexTsPaths.length > 0) {
-                const specifiers = (node as any).specifiers;
+                const { specifiers } = node as any;
                 if (!specifiers || specifiers.length === 0) {
                   return;
                 }
@@ -410,7 +412,7 @@ export default ESLintUtils.RuleCreator(
               // imp has form of @myorg/someproject/some/path
               const indexTsPaths = getBarrelEntryPointByImportScope(imp);
               if (indexTsPaths.length > 0) {
-                const specifiers = (node as any).specifiers;
+                const { specifiers } = node as any;
                 if (!specifiers || specifiers.length === 0) {
                   return;
                 }
@@ -636,7 +638,7 @@ export default ESLintUtils.RuleCreator(
           ? findTransitiveExternalDependencies(projectGraph, targetProject)
           : [];
 
-        for (let constraint of constraints) {
+        for (const constraint of constraints) {
           if (
             constraint.onlyDependOnLibsWithTags &&
             constraint.onlyDependOnLibsWithTags.length &&
