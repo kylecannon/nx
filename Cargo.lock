@@ -2456,6 +2456,7 @@ dependencies = [
  "jsonc-parser",
  "jsonrpsee",
  "libc",
+ "lru",
  "machine-uid",
  "mio",
  "napi",
