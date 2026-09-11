@@ -18,6 +18,7 @@ import {
 } from '../../command-line/run/executor-utils';
 import { ProjectConfiguration } from '../../config/workspace-json-project-json';
 import { ProjectGraph } from '../../config/project-graph';
+import { deserializeTaskGraph } from '../task-graph-serialization';
 
 // Batch workers are inside an Nx run just like task workers (see
 // bin/run-executor.ts) — mark it so nested tooling can detect Nx.
@@ -122,8 +123,8 @@ process.on('message', async (message: BatchMessage) => {
       const results = await runTasks(
         message.executorName,
         message.projectGraph,
-        message.batchTaskGraph,
-        message.fullTaskGraph
+        deserializeTaskGraph(message.batchTaskGraph),
+        deserializeTaskGraph(message.fullTaskGraph)
       );
       process.send({
         type: BatchMessageType.CompleteBatchExecution,
