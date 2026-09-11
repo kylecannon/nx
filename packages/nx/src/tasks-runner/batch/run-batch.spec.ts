@@ -1,6 +1,8 @@
+import { deserialize } from 'v8';
 import { TaskGraph } from '../../config/task-graph';
+import { isDedupedPayload } from '../../utils/dedupe-serialization';
+import { encodeTaskGraphForWorker } from '../task-graph-for-worker';
 import { BatchMessageType } from './batch-messages';
-import { serializeTaskGraph } from '../task-graph-serialization';
 
 const { execute } = vi.hoisted(() => ({ execute: vi.fn(async () => ({})) }));
 vi.mock('../../command-line/run/executor-utils', () => ({
@@ -15,6 +17,29 @@ vi.mock('../../utils/params', () => ({
   combineOptionsForExecutor: (options) => options,
 }));
 
+function graph(projects: string[], inputs: number): TaskGraph {
+  const shared: Record<string, string> = { shared: 'value'.repeat(100) };
+  for (let i = 1; i < inputs; i++) shared[`workspace:lib/file-${i}.ts`] = 'h';
+  return {
+    roots: [`${projects[0]}:build`],
+    dependencies: Object.fromEntries(projects.map((p) => [`${p}:build`, []])),
+    continuousDependencies: {},
+    tasks: Object.fromEntries(
+      projects.map((project) => [
+        `${project}:build`,
+        {
+          id: `${project}:build`,
+          target: { project, target: 'build' },
+          overrides: {},
+          outputs: [],
+          hash: `hash-${project}`,
+          hashDetails: { command: 'build', nodes: { ...shared, project } },
+        },
+      ])
+    ),
+  };
+}
+
 describe('batch worker task graph transport', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -25,33 +50,22 @@ describe('batch worker task graph transport', () => {
     vi.unstubAllEnvs();
   });
 
-  it.each(['original', 'compact'])(
-    'restores both %s graphs before calling the batch executor',
-    async (format) => {
-      const input: TaskGraph = {
-        roots: ['a:build'],
-        dependencies: { 'a:build': [], 'b:build': ['a:build'] },
-        continuousDependencies: {},
-        tasks: Object.fromEntries(
-          ['a', 'b'].map((project) => [
-            `${project}:build`,
-            {
-              id: `${project}:build`,
-              target: { project, target: 'build' },
-              overrides: {},
-              outputs: [],
-              hash: `hash-${project}`,
-              hashDetails: {
-                command: 'build',
-                nodes: { shared: 'value'.repeat(100), project },
-              },
-            },
-          ])
-        ),
-      };
+  it.each([
+    ['plain objects', ['a', 'b'], 1, false],
+    ['small buffers, JSON bytes', ['a', 'b'], 1, true],
+    [
+      'dense buffers, deduped',
+      ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+      300,
+      true,
+    ],
+  ])(
+    'passes independent complete graphs to the batch from %s',
+    async (_, projects, inputs, asBuffer) => {
+      const input = graph(projects, inputs);
       const projectGraph = {
         nodes: Object.fromEntries(
-          ['a', 'b'].map((name) => [
+          projects.map((name) => [
             name,
             {
               name,
@@ -63,15 +77,15 @@ describe('batch worker task graph transport', () => {
             },
           ])
         ),
-        dependencies: { a: [], b: [] },
+        dependencies: Object.fromEntries(projects.map((p) => [p, []])),
       };
       const encode = () =>
-        JSON.parse(
-          JSON.stringify(
-            format === 'original' ? input : serializeTaskGraph(input)
-          )
-        );
-      if (format === 'compact') expect(encode()).toHaveProperty('entries');
+        asBuffer
+          ? encodeTaskGraphForWorker(input)
+          : JSON.parse(JSON.stringify(input));
+      if (inputs > 1) {
+        expect(isDedupedPayload(deserialize(encode() as Buffer))).toBe(true);
+      }
       const send = vi.spyOn(process, 'send').mockImplementation(() => true);
       const on = vi.spyOn(process, 'on');
       await import('./run-batch');
@@ -92,6 +106,7 @@ describe('batch worker task graph transport', () => {
           .mock.calls.at(-1) as any;
         expect(JSON.stringify(batchGraph)).toBe(JSON.stringify(input));
         expect(JSON.stringify(context.taskGraph)).toBe(JSON.stringify(input));
+        // Two decodes of the same bytes must yield two independent objects.
         batchGraph.tasks['a:build'].hashDetails.nodes.shared = 'changed';
         expect(
           context.taskGraph.tasks['a:build'].hashDetails.nodes.shared

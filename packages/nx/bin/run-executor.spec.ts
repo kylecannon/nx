@@ -1,8 +1,33 @@
-import { TaskGraph } from '../src/config/task-graph';
+import { deserialize } from 'v8';
 import { run } from '../src/command-line/run/run';
-import { serializeTaskGraph } from '../src/tasks-runner/task-graph-serialization';
+import { TaskGraph } from '../src/config/task-graph';
+import { encodeTaskGraphForWorker } from '../src/tasks-runner/task-graph-for-worker';
+import { isDedupedPayload } from '../src/utils/dedupe-serialization';
 
 vi.mock('../src/command-line/run/run', () => ({ run: vi.fn(async () => 0) }));
+
+function graph(projects: string[], inputs: number): TaskGraph {
+  const shared: Record<string, string> = { shared: 'value'.repeat(100) };
+  for (let i = 1; i < inputs; i++) shared[`workspace:lib/file-${i}.ts`] = 'h';
+  return {
+    roots: [`${projects[0]}:build`],
+    dependencies: Object.fromEntries(projects.map((p) => [`${p}:build`, []])),
+    continuousDependencies: {},
+    tasks: Object.fromEntries(
+      projects.map((project) => [
+        `${project}:build`,
+        {
+          id: `${project}:build`,
+          target: { project, target: 'build' },
+          overrides: {},
+          outputs: [],
+          hash: `hash-${project}`,
+          hashDetails: { command: 'build', nodes: { ...shared, project } },
+        },
+      ])
+    ),
+  };
+}
 
 describe('run-executor task graph transport', () => {
   beforeEach(() => {
@@ -17,36 +42,26 @@ describe('run-executor task graph transport', () => {
     vi.unstubAllEnvs();
   });
 
-  it.each(['original', 'compact'])(
-    'passes the complete %s graph to the executor',
-    async (format) => {
-      const input: TaskGraph = {
-        roots: ['a:build'],
-        dependencies: { 'a:build': [], 'b:build': ['a:build'] },
-        continuousDependencies: {},
-        tasks: Object.fromEntries(
-          ['a', 'b'].map((project) => [
-            `${project}:build`,
-            {
-              id: `${project}:build`,
-              target: { project, target: 'build' },
-              overrides: {},
-              outputs: [],
-              hash: `hash-${project}`,
-              hashDetails: {
-                command: 'build',
-                nodes: { shared: 'value'.repeat(100), project },
-              },
-            },
-          ])
-        ),
-      };
-      const wire = JSON.parse(
-        JSON.stringify(
-          format === 'original' ? input : serializeTaskGraph(input)
-        )
-      );
-      if (format === 'compact') expect(wire).toHaveProperty('entries');
+  it.each([
+    ['a plain object', ['a', 'b'], 1, false],
+    ['a small buffer, JSON bytes', ['a', 'b'], 1, true],
+    [
+      'a dense buffer, deduped',
+      ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+      300,
+      true,
+    ],
+  ])(
+    'passes the complete graph to the executor from %s',
+    async (_, projects, inputs, asBuffer) => {
+      const input = graph(projects, inputs);
+      const wire = asBuffer
+        ? encodeTaskGraphForWorker(input)
+        : JSON.parse(JSON.stringify(input));
+      if (inputs > 1) {
+        // The dense case must actually take the dedupe path on the wire.
+        expect(isDedupedPayload(deserialize(wire as Buffer))).toBe(true);
+      }
       const exit = vi
         .spyOn(process, 'exit')
         .mockImplementation(() => undefined as never);

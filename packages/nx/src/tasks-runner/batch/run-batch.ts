@@ -8,6 +8,7 @@ import {
 import { workspaceRoot } from '../../utils/workspace-root';
 import { combineOptionsForExecutor, Options } from '../../utils/params';
 import { TaskGraph } from '../../config/task-graph';
+import { parseMessage } from '../../utils/consume-messages-from-socket';
 import { ExecutorContext } from '../../config/misc-interfaces';
 import { readProjectsConfigurationFromProjectGraph } from '../../project-graph/project-graph';
 import { readNxJson } from '../../config/configuration';
@@ -18,7 +19,6 @@ import {
 } from '../../command-line/run/executor-utils';
 import { ProjectConfiguration } from '../../config/workspace-json-project-json';
 import { ProjectGraph } from '../../config/project-graph';
-import { deserializeTaskGraph } from '../task-graph-serialization';
 
 // Batch workers are inside an Nx run just like task workers (see
 // bin/run-executor.ts) — mark it so nested tooling can detect Nx.
@@ -123,8 +123,12 @@ process.on('message', async (message: BatchMessage) => {
       const results = await runTasks(
         message.executorName,
         message.projectGraph,
-        deserializeTaskGraph(message.batchTaskGraph),
-        deserializeTaskGraph(message.fullTaskGraph)
+        Buffer.isBuffer(message.batchTaskGraph)
+          ? parseMessage<TaskGraph>(message.batchTaskGraph)
+          : message.batchTaskGraph,
+        Buffer.isBuffer(message.fullTaskGraph)
+          ? parseMessage<TaskGraph>(message.fullTaskGraph)
+          : message.fullTaskGraph
       );
       process.send({
         type: BatchMessageType.CompleteBatchExecution,

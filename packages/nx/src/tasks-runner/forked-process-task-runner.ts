@@ -22,9 +22,8 @@ import {
 import { RunningTask } from './running-tasks/running-task';
 import { registerTaskProcessStart } from './task-io-service';
 import { Batch } from './tasks-schedule';
-import { serializeTaskGraph } from './task-graph-serialization';
 import { getCliPath, getPrintableCommandArgsForTask } from './utils';
-
+import { encodeTaskGraphForWorker } from './task-graph-for-worker';
 const forkScript = join(__dirname, './fork.js');
 
 const workerPath = join(__dirname, './batch/run-batch.js');
@@ -71,6 +70,7 @@ export class ForkedProcessTaskRunner {
 
     const p = fork(workerPath, {
       stdio: ['inherit', 'pipe', 'pipe', 'ipc'],
+      serialization: 'advanced',
       env: {
         ...env,
         NX_FORKED_TASK_EXECUTOR: 'true',
@@ -95,8 +95,8 @@ export class ForkedProcessTaskRunner {
       type: BatchMessageType.RunTasks,
       executorName,
       projectGraph,
-      batchTaskGraph: serializeTaskGraph(batchTaskGraph),
-      fullTaskGraph: serializeTaskGraph(fullTaskGraph),
+      batchTaskGraph: encodeTaskGraphForWorker(batchTaskGraph),
+      fullTaskGraph: encodeTaskGraphForWorker(fullTaskGraph),
     });
 
     return cp;
@@ -238,12 +238,16 @@ export class ForkedProcessTaskRunner {
       registerTaskProcessStart(task.id, pid);
     }
 
-    p.send({
-      targetDescription: task.target,
-      overrides: task.overrides,
-      taskGraph: serializeTaskGraph(taskGraph),
-      isVerbose: this.verbose,
-    });
+    p.send(
+      {
+        targetDescription: task.target,
+        overrides: task.overrides,
+        taskGraph: encodeTaskGraphForWorker(taskGraph),
+        isVerbose: this.verbose,
+      },
+      // A nested buffer must ride the pseudo-IPC socket as v8, not JSON.
+      'v8'
+    );
     this.processes.add(p);
 
     p.onExit((code, terminalOutput) => {
@@ -287,6 +291,7 @@ export class ForkedProcessTaskRunner {
 
       const p = fork(this.cliPath, {
         stdio: ['inherit', 'pipe', 'pipe', 'ipc'],
+        serialization: 'advanced',
         env: {
           ...env,
           NX_FORKED_TASK_EXECUTOR: 'true',
@@ -302,7 +307,7 @@ export class ForkedProcessTaskRunner {
       p.send({
         targetDescription: task.target,
         overrides: task.overrides,
-        taskGraph: serializeTaskGraph(taskGraph),
+        taskGraph: encodeTaskGraphForWorker(taskGraph),
         isVerbose: this.verbose,
       });
 
@@ -353,6 +358,7 @@ export class ForkedProcessTaskRunner {
       }
       const p = fork(this.cliPath, {
         stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+        serialization: 'advanced',
         env: {
           ...env,
           NX_FORKED_TASK_EXECUTOR: 'true',
@@ -372,7 +378,7 @@ export class ForkedProcessTaskRunner {
       p.send({
         targetDescription: task.target,
         overrides: task.overrides,
-        taskGraph: serializeTaskGraph(taskGraph),
+        taskGraph: encodeTaskGraphForWorker(taskGraph),
         isVerbose: this.verbose,
       });
 
