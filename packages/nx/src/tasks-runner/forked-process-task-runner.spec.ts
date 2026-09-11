@@ -2,14 +2,9 @@ import { fork, type ForkOptions } from 'child_process';
 import { EventEmitter } from 'events';
 import { PassThrough } from 'stream';
 import type { TaskGraph } from '../config/task-graph';
-import { consumeMessagesFromSocket } from '../utils/consume-messages-from-socket';
+import { parseMessage } from '../utils/consume-messages-from-socket';
+import { BatchMessageType } from './batch/batch-messages';
 import { ForkedProcessTaskRunner } from './forked-process-task-runner';
-import { PseudoTerminal } from './pseudo-terminal';
-import { deserializeTaskGraph } from './task-graph-serialization';
-import {
-  deserializeTaskMessage,
-  TASK_MESSAGE_TYPE,
-} from './task-worker-message';
 
 vi.mock('child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('child_process')>()),
@@ -21,13 +16,15 @@ vi.mock('./utils', async (importOriginal) => ({
   getCliPath: () => '/test/run-executor.js',
 }));
 
-function graph(count = 2): TaskGraph {
+function graph(): TaskGraph {
+  const nodes: Record<string, string> = {};
+  for (let i = 0; i < 300; i++) nodes[`workspace:lib/file-${i}.ts`] = 'h';
   return {
     roots: ['a'],
     dependencies: {},
     continuousDependencies: {},
     tasks: Object.fromEntries(
-      ['a', 'b'].slice(0, count).map((id) => [
+      ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id) => [
         id,
         {
           id,
@@ -35,24 +32,19 @@ function graph(count = 2): TaskGraph {
           overrides: { __overrides_unparsed__: [] },
           outputs: [],
           hash: `hash-${id}`,
-          hashDetails: {
-            command: 'build',
-            nodes: { shared: 'value'.repeat(100) },
-          },
+          hashDetails: { command: 'build', nodes },
         },
       ])
     ),
   };
 }
 
-describe('task-worker startup routes', () => {
+describe('task graph transport to worker processes', () => {
   let child: any;
-  let messages: ReturnType<typeof deserializeTaskMessage>[];
   let options: ForkOptions;
   const streams: PassThrough[] = [];
 
   beforeEach(() => {
-    messages = [];
     vi.mocked(fork).mockImplementation(((
       _path: string,
       config: ForkOptions
@@ -60,18 +52,13 @@ describe('task-worker startup routes', () => {
       options = config;
       const stdout = new PassThrough();
       const stderr = new PassThrough();
-      const pipe = config.stdio[4] === 'pipe' ? new PassThrough() : null;
-      streams.push(stdout, stderr, ...(pipe ? [pipe] : []));
-      pipe?.on(
-        'data',
-        consumeMessagesFromSocket((data) =>
-          messages.push(deserializeTaskMessage(data))
-        )
-      );
+      streams.push(stdout, stderr);
       child = Object.assign(new EventEmitter(), {
         stdout,
         stderr,
-        stdio: [null, stdout, stderr, null, pipe],
+        stdio: [null, stdout, stderr, null],
+        // BatchProcess.send forwards only while the channel is connected.
+        connected: true,
         send: vi.fn(),
       });
       return child;
@@ -84,7 +71,7 @@ describe('task-worker startup routes', () => {
   });
 
   it.each([false, true])(
-    'uses the pipe for legacy worker startup (piped output=%s)',
+    'sends the graph as one encoded buffer over an advanced channel (piped output=%s)',
     async (pipeOutput) => {
       const input = graph();
       const runner = new ForkedProcessTaskRunner(
@@ -98,85 +85,56 @@ describe('task-worker startup routes', () => {
         streamOutput: false,
         pipeOutput,
       });
-      expect(options.stdio).toEqual([
-        'inherit',
-        pipeOutput ? 'pipe' : 'inherit',
-        pipeOutput ? 'pipe' : 'inherit',
-        'ipc',
-        'pipe',
-      ]);
-      expect(options.env.NX_TASK_MESSAGE_FD).toBe('4');
-      expect(options.serialization).toBeUndefined();
-      expect(child.send).not.toHaveBeenCalled();
-      expect(messages).toHaveLength(1);
-      expect(deserializeTaskGraph(messages[0].taskGraph)).toEqual(input);
+      expect(options.serialization).toBe('advanced');
+      expect(child.send).toHaveBeenCalledTimes(1);
+      const message = child.send.mock.calls[0][0];
+      expect(message.targetDescription).toEqual(input.tasks.a.target);
+      expect(Buffer.isBuffer(message.taskGraph)).toBe(true);
+      expect(parseMessage(message.taskGraph)).toEqual(input);
     }
   );
 
-  it('keeps one-task launches on existing JSON IPC', async () => {
-    const input = graph(1);
+  it('reuses the encoded bytes across forks until a task is re-hashed', async () => {
+    const input = graph();
     const runner = new ForkedProcessTaskRunner({ lifeCycle: {} } as any, false);
-    await runner.forkProcessLegacy(input.tasks.a, {
-      taskGraph: input,
-      env: { NX_DAEMON: 'false' },
-      temporaryOutputPath: '/unused',
-      streamOutput: false,
-      pipeOutput: true,
-    });
-    expect(options.stdio[4]).toBe('ignore');
-    expect(options.env.NX_TASK_MESSAGE_FD).toBeUndefined();
-    expect(child.send).toHaveBeenCalledWith(
-      expect.objectContaining({ taskGraph: input })
-    );
-    expect(messages).toHaveLength(0);
+    const forkFor = async (task: TaskGraph['tasks'][string]) => {
+      await runner.forkProcessLegacy(task, {
+        taskGraph: input,
+        env: {},
+        temporaryOutputPath: '/unused',
+        streamOutput: false,
+        pipeOutput: true,
+      });
+      return child.send.mock.calls[0][0].taskGraph as Buffer;
+    };
+    const first = await forkFor(input.tasks.a);
+    input.tasks.a.startTime = 1;
+    input.tasks.a.endTime = 2;
+    expect(await forkFor(input.tasks.b)).toBe(first);
+    input.tasks.b.hash = 'rehashed';
+    const after = await forkFor(input.tasks.c);
+    expect(after).not.toBe(first);
+    expect(parseMessage<TaskGraph>(after).tasks.b.hash).toBe('rehashed');
   });
 
-  it('uses the pipe for both batch graphs, including a single-task batch', async () => {
+  it('sends both batch graphs as encoded buffers', async () => {
     const full = graph();
-    const batch = graph(1);
-    const projectGraph = { nodes: {}, dependencies: {} };
+    const batch: TaskGraph = {
+      ...full,
+      tasks: { a: full.tasks.a, b: full.tasks.b },
+      roots: ['a'],
+    };
     const runner = new ForkedProcessTaskRunner({ lifeCycle: {} } as any, false);
     await runner.forkProcessForBatch(
-      { id: 'batch', executorName: 'test:build', taskGraph: batch },
-      projectGraph,
+      { executorName: 'nx:noop', taskGraph: batch } as any,
+      { nodes: {}, dependencies: {} } as any,
       full,
-      { NX_DAEMON: 'false' }
+      {}
     );
-    expect(options.env.NX_TASK_MESSAGE_FD).toBe('4');
-    expect(options.serialization).toBeUndefined();
-    expect(child.send).not.toHaveBeenCalled();
-    expect(deserializeTaskGraph(messages[0].batchTaskGraph)).toEqual(batch);
-    expect(deserializeTaskGraph(messages[0].fullTaskGraph)).toEqual(full);
-    expect(messages[0].projectGraph).toEqual(projectGraph);
-  });
-
-  it.each([1, 2])('configures the PTY bridge for %s tasks', async (count) => {
-    const input = graph(count);
-    const process = { send: vi.fn(), getPid: () => undefined, onExit: vi.fn() };
-    const terminal = { fork: vi.fn(async () => process) };
-    const runner = new ForkedProcessTaskRunner({ lifeCycle: {} } as any, true);
-    vi.spyOn(PseudoTerminal, 'isSupported').mockReturnValue(true);
-    vi.spyOn(runner as any, 'createPseudoTerminal').mockResolvedValue(terminal);
-    await runner.forkProcess(input.tasks.a, {
-      taskGraph: input,
-      env: { NX_DAEMON: 'false' },
-      temporaryOutputPath: '/unused',
-      streamOutput: false,
-      pipeOutput: true,
-      disablePseudoTerminal: false,
-    });
-    expect(
-      (terminal.fork.mock.calls[0] as any)[2].jsEnv.NX_TASK_MESSAGE_FD
-    ).toBe(count > 1 ? '4' : '');
-    const [message, format] = process.send.mock.calls[0];
-    if (count > 1) {
-      expect(format).toBe('v8');
-      expect(message.type).toBe(TASK_MESSAGE_TYPE);
-      const decoded = deserializeTaskMessage(message.payload);
-      expect(deserializeTaskGraph(decoded.taskGraph)).toEqual(input);
-    } else {
-      expect(format).toBeUndefined();
-      expect(message.taskGraph).toEqual(input);
-    }
+    expect(options.serialization).toBe('advanced');
+    const message = child.send.mock.calls[0][0];
+    expect(message.type).toBe(BatchMessageType.RunTasks);
+    expect(parseMessage(message.batchTaskGraph)).toEqual(batch);
+    expect(parseMessage(message.fullTaskGraph)).toEqual(full);
   });
 });

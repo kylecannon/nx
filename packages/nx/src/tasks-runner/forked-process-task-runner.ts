@@ -22,14 +22,8 @@ import {
 import { RunningTask } from './running-tasks/running-task';
 import { registerTaskProcessStart } from './task-io-service';
 import { Batch } from './tasks-schedule';
-import { serializeTaskGraph } from './task-graph-serialization';
-import {
-  sendTaskMessage,
-  serializeTaskMessage,
-  TASK_MESSAGE_TYPE,
-} from './task-worker-message';
 import { getCliPath, getPrintableCommandArgsForTask } from './utils';
-
+import { encodeTaskGraphForWorker } from './task-graph-for-worker';
 const forkScript = join(__dirname, './fork.js');
 
 const workerPath = join(__dirname, './batch/run-batch.js');
@@ -74,20 +68,12 @@ export class ForkedProcessTaskRunner {
       output.logCommand(args.join(' '));
     }
 
-    const useTaskMessagePipe =
-      count > 1 || Object.keys(fullTaskGraph.tasks).length > 1;
     const p = fork(workerPath, {
-      stdio: [
-        'inherit',
-        'pipe',
-        'pipe',
-        'ipc',
-        useTaskMessagePipe ? 'pipe' : 'ignore',
-      ],
+      stdio: ['inherit', 'pipe', 'pipe', 'ipc'],
+      serialization: 'advanced',
       env: {
         ...env,
         NX_FORKED_TASK_EXECUTOR: 'true',
-        NX_TASK_MESSAGE_FD: useTaskMessagePipe ? '4' : undefined,
       },
     });
 
@@ -105,12 +91,12 @@ export class ForkedProcessTaskRunner {
     });
 
     // Start the tasks
-    sendTaskMessage(p, {
+    cp.send({
       type: BatchMessageType.RunTasks,
       executorName,
       projectGraph,
-      batchTaskGraph: serializeTaskGraph(batchTaskGraph),
-      fullTaskGraph: serializeTaskGraph(fullTaskGraph),
+      batchTaskGraph: encodeTaskGraphForWorker(batchTaskGraph),
+      fullTaskGraph: encodeTaskGraphForWorker(fullTaskGraph),
     });
 
     return cp;
@@ -232,7 +218,6 @@ export class ForkedProcessTaskRunner {
       env: NodeJS.ProcessEnv;
     }
   ): Promise<PseudoTtyProcess> {
-    const useTaskMessagePipe = Object.keys(taskGraph.tasks).length > 1;
     const childId = task.id;
     const pseudoTerminal = await this.createPseudoTerminal();
     this.pseudoTerminals.add(pseudoTerminal);
@@ -242,7 +227,6 @@ export class ForkedProcessTaskRunner {
       jsEnv: {
         ...env,
         NX_FORKED_TASK_EXECUTOR: 'true',
-        NX_TASK_MESSAGE_FD: useTaskMessagePipe ? '4' : '',
       },
       quiet: !streamOutput,
       commandLabel: `nx run ${task.id}`,
@@ -254,20 +238,16 @@ export class ForkedProcessTaskRunner {
       registerTaskProcessStart(task.id, pid);
     }
 
-    const message = {
-      targetDescription: task.target,
-      overrides: task.overrides,
-      taskGraph: serializeTaskGraph(taskGraph),
-      isVerbose: this.verbose,
-    };
-    if (useTaskMessagePipe) {
-      p.send(
-        { type: TASK_MESSAGE_TYPE, payload: serializeTaskMessage(message) },
-        'v8'
-      );
-    } else {
-      p.send(message);
-    }
+    p.send(
+      {
+        targetDescription: task.target,
+        overrides: task.overrides,
+        taskGraph: encodeTaskGraphForWorker(taskGraph),
+        isVerbose: this.verbose,
+      },
+      // A nested buffer must ride the pseudo-IPC socket as v8, not JSON.
+      'v8'
+    );
     this.processes.add(p);
 
     p.onExit((code, terminalOutput) => {
@@ -309,19 +289,12 @@ export class ForkedProcessTaskRunner {
         output.logCommand(args.join(' '));
       }
 
-      const useTaskMessagePipe = Object.keys(taskGraph.tasks).length > 1;
       const p = fork(this.cliPath, {
-        stdio: [
-          'inherit',
-          'pipe',
-          'pipe',
-          'ipc',
-          useTaskMessagePipe ? 'pipe' : 'ignore',
-        ],
+        stdio: ['inherit', 'pipe', 'pipe', 'ipc'],
+        serialization: 'advanced',
         env: {
           ...env,
           NX_FORKED_TASK_EXECUTOR: 'true',
-          NX_TASK_MESSAGE_FD: useTaskMessagePipe ? '4' : undefined,
         },
       });
 
@@ -331,10 +304,10 @@ export class ForkedProcessTaskRunner {
       }
 
       // Send message to run the executor
-      sendTaskMessage(p, {
+      p.send({
         targetDescription: task.target,
         overrides: task.overrides,
-        taskGraph: serializeTaskGraph(taskGraph),
+        taskGraph: encodeTaskGraphForWorker(taskGraph),
         isVerbose: this.verbose,
       });
 
@@ -383,19 +356,12 @@ export class ForkedProcessTaskRunner {
       if (streamOutput) {
         output.logCommand(args.join(' '));
       }
-      const useTaskMessagePipe = Object.keys(taskGraph.tasks).length > 1;
       const p = fork(this.cliPath, {
-        stdio: [
-          'inherit',
-          'inherit',
-          'inherit',
-          'ipc',
-          useTaskMessagePipe ? 'pipe' : 'ignore',
-        ],
+        stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+        serialization: 'advanced',
         env: {
           ...env,
           NX_FORKED_TASK_EXECUTOR: 'true',
-          NX_TASK_MESSAGE_FD: useTaskMessagePipe ? '4' : undefined,
         },
       });
 
@@ -409,10 +375,10 @@ export class ForkedProcessTaskRunner {
       this.processes.add(cp);
 
       // Send message to run the executor
-      sendTaskMessage(p, {
+      p.send({
         targetDescription: task.target,
         overrides: task.overrides,
-        taskGraph: serializeTaskGraph(taskGraph),
+        taskGraph: encodeTaskGraphForWorker(taskGraph),
         isVerbose: this.verbose,
       });
 

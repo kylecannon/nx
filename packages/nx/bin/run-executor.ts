@@ -1,11 +1,7 @@
-import { receiveTaskMessage } from '../src/tasks-runner/task-worker-message';
 import { appendFileSync, openSync, writeFileSync } from 'fs';
 import { Target, run } from '../src/command-line/run/run';
 import { TaskGraph } from '../src/config/task-graph';
-import {
-  deserializeTaskGraph,
-  SerializedTaskGraph,
-} from '../src/tasks-runner/task-graph-serialization';
+import { parseMessage } from '../src/utils/consume-messages-from-socket';
 
 if (process.env.NX_TERMINAL_OUTPUT_PATH) {
   setUpOutputWatching(
@@ -81,9 +77,12 @@ process.on(
   async (message: {
     targetDescription: Target;
     overrides: Record<string, any>;
-    taskGraph: TaskGraph | SerializedTaskGraph;
+    taskGraph: TaskGraph | Buffer;
     isVerbose: boolean;
   }) => {
+    const taskGraph = Buffer.isBuffer(message.taskGraph)
+      ? parseMessage<TaskGraph>(message.taskGraph)
+      : message.taskGraph;
     try {
       const statusCode = await run(
         process.cwd(),
@@ -91,7 +90,7 @@ process.on(
         message.targetDescription,
         message.overrides,
         message.isVerbose,
-        deserializeTaskGraph(message.taskGraph)
+        taskGraph
       );
       process.exit(statusCode);
     } catch (e) {
@@ -100,5 +99,3 @@ process.on(
     }
   }
 );
-
-receiveTaskMessage();

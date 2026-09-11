@@ -1,6 +1,5 @@
 import type { TaskResult } from '../../config/misc-interfaces';
 import type { TaskGraph } from '../../config/task-graph';
-import type { SerializedTaskGraph } from '../task-graph-serialization';
 import type { ProjectGraph } from '../../config/project-graph';
 
 export enum BatchMessageType {
@@ -24,8 +23,8 @@ export interface RunTasksMessage {
   type: BatchMessageType.RunTasks;
   executorName: string;
   projectGraph: ProjectGraph;
-  batchTaskGraph: TaskGraph | SerializedTaskGraph;
-  fullTaskGraph: TaskGraph | SerializedTaskGraph;
+  batchTaskGraph: TaskGraph | Buffer;
+  fullTaskGraph: TaskGraph | Buffer;
 }
 
 export interface CompleteTaskMessage {
