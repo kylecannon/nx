@@ -1,3 +1,7 @@
+import {
+  deserializeTaskMessage,
+  serializeTaskMessage,
+} from '../task-worker-message';
 import { TaskGraph } from '../../config/task-graph';
 import { BatchMessageType } from './batch-messages';
 import { serializeTaskGraph } from '../task-graph-serialization';
@@ -18,6 +22,7 @@ vi.mock('../../utils/params', () => ({
 describe('batch worker task graph transport', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.stubEnv('NX_TASK_MESSAGE_FD', undefined);
     vi.stubEnv('NX_CLI_SET', '');
   });
   afterEach(() => {
@@ -25,7 +30,7 @@ describe('batch worker task graph transport', () => {
     vi.unstubAllEnvs();
   });
 
-  it.each(['original', 'compact'])(
+  it.each(['original', 'compact', 'binary'])(
     'restores both %s graphs before calling the batch executor',
     async (format) => {
       const input: TaskGraph = {
@@ -66,11 +71,15 @@ describe('batch worker task graph transport', () => {
         dependencies: { a: [], b: [] },
       };
       const encode = () =>
-        JSON.parse(
-          JSON.stringify(
-            format === 'original' ? input : serializeTaskGraph(input)
-          )
-        );
+        format === 'binary'
+          ? deserializeTaskMessage(
+              serializeTaskMessage({ taskGraph: serializeTaskGraph(input) })
+            ).taskGraph
+          : JSON.parse(
+              JSON.stringify(
+                format === 'original' ? input : serializeTaskGraph(input)
+              )
+            );
       if (format === 'compact') expect(encode()).toHaveProperty('entries');
       const send = vi.spyOn(process, 'send').mockImplementation(() => true);
       const on = vi.spyOn(process, 'on');

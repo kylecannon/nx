@@ -1,3 +1,4 @@
+import { receiveTaskMessage } from '../task-worker-message';
 import {
   CompleteBatchExecutionMessage,
   BatchMessage,
@@ -133,3 +134,5 @@ process.on('message', async (message: BatchMessage) => {
     }
   }
 });
+
+receiveTaskMessage();

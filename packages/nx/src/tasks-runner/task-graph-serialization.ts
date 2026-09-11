@@ -4,7 +4,7 @@ import type { Task, TaskGraph } from '../config/task-graph';
 export interface SerializedTaskGraph {
   graph: TaskGraph;
   entries: [string, string][];
-  nodeIndices: Record<string, number[]>;
+  nodeIndices: Record<string, readonly number[] | Uint32Array>;
 }
 
 /**

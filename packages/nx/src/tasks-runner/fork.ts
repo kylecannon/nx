@@ -2,6 +2,7 @@ import { fork, Serializable } from 'child_process';
 import { join } from 'path';
 import { PseudoIPCClient } from './pseudo-ipc';
 import { signalToCode } from '../utils/exit-codes';
+import { isTaskMessageEnvelope, sendTaskMessage } from './task-worker-message';
 
 const pseudoIPCPath = process.argv[2];
 const forkId = process.argv[3];
@@ -15,7 +16,13 @@ if (process.env['NX_PSEUDO_TERMINAL_EXEC_ARGV']) {
 }
 
 const childProcess = fork(script, {
-  stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+  stdio: [
+    'inherit',
+    'inherit',
+    'inherit',
+    'ipc',
+    process.env.NX_TASK_MESSAGE_FD === '4' ? 'pipe' : 'ignore',
+  ],
   env: process.env,
   execArgv,
 });
@@ -25,7 +32,11 @@ const pseudoIPC = new PseudoIPCClient(pseudoIPCPath);
 pseudoIPC.onMessageFromParent(
   forkId,
   (message) => {
-    childProcess.send(message);
+    if (isTaskMessageEnvelope(message)) {
+      sendTaskMessage(childProcess, message.payload);
+    } else {
+      childProcess.send(message);
+    }
   },
   () => {
     // IPC connection closed

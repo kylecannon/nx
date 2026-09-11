@@ -1,3 +1,7 @@
+import {
+  deserializeTaskMessage,
+  serializeTaskMessage,
+} from '../src/tasks-runner/task-worker-message';
 import { TaskGraph } from '../src/config/task-graph';
 import { run } from '../src/command-line/run/run';
 import { serializeTaskGraph } from '../src/tasks-runner/task-graph-serialization';
@@ -7,6 +11,7 @@ vi.mock('../src/command-line/run/run', () => ({ run: vi.fn(async () => 0) }));
 describe('run-executor task graph transport', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.stubEnv('NX_TASK_MESSAGE_FD', undefined);
     vi.stubEnv('NX_WORKSPACE_ROOT', '/workspace');
     vi.stubEnv('NX_TERMINAL_OUTPUT_PATH', '');
     vi.stubEnv('NX_CLI_SET', '');
@@ -17,7 +22,7 @@ describe('run-executor task graph transport', () => {
     vi.unstubAllEnvs();
   });
 
-  it.each(['original', 'compact'])(
+  it.each(['original', 'compact', 'binary'])(
     'passes the complete %s graph to the executor',
     async (format) => {
       const input: TaskGraph = {
@@ -41,11 +46,19 @@ describe('run-executor task graph transport', () => {
           ])
         ),
       };
-      const wire = JSON.parse(
-        JSON.stringify(
-          format === 'original' ? input : serializeTaskGraph(input)
-        )
-      );
+      const binaryWire =
+        format === 'binary'
+          ? deserializeTaskMessage(
+              serializeTaskMessage({ taskGraph: serializeTaskGraph(input) })
+            ).taskGraph
+          : null;
+      const wire =
+        binaryWire ??
+        JSON.parse(
+          JSON.stringify(
+            format === 'original' ? input : serializeTaskGraph(input)
+          )
+        );
       if (format === 'compact') expect(wire).toHaveProperty('entries');
       const exit = vi
         .spyOn(process, 'exit')

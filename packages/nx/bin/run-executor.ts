@@ -1,3 +1,4 @@
+import { receiveTaskMessage } from '../src/tasks-runner/task-worker-message';
 import { appendFileSync, openSync, writeFileSync } from 'fs';
 import { Target, run } from '../src/command-line/run/run';
 import { TaskGraph } from '../src/config/task-graph';
@@ -99,3 +100,5 @@ process.on(
     }
   }
 );
+
+receiveTaskMessage();
