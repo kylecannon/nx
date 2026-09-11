@@ -22,6 +22,7 @@ import {
 import { RunningTask } from './running-tasks/running-task';
 import { registerTaskProcessStart } from './task-io-service';
 import { Batch } from './tasks-schedule';
+import { serializeTaskGraph } from './task-graph-serialization';
 import { getCliPath, getPrintableCommandArgsForTask } from './utils';
 
 const forkScript = join(__dirname, './fork.js');
@@ -94,8 +95,8 @@ export class ForkedProcessTaskRunner {
       type: BatchMessageType.RunTasks,
       executorName,
       projectGraph,
-      batchTaskGraph,
-      fullTaskGraph,
+      batchTaskGraph: serializeTaskGraph(batchTaskGraph),
+      fullTaskGraph: serializeTaskGraph(fullTaskGraph),
     });
 
     return cp;
@@ -240,7 +241,7 @@ export class ForkedProcessTaskRunner {
     p.send({
       targetDescription: task.target,
       overrides: task.overrides,
-      taskGraph,
+      taskGraph: serializeTaskGraph(taskGraph),
       isVerbose: this.verbose,
     });
     this.processes.add(p);
@@ -301,7 +302,7 @@ export class ForkedProcessTaskRunner {
       p.send({
         targetDescription: task.target,
         overrides: task.overrides,
-        taskGraph,
+        taskGraph: serializeTaskGraph(taskGraph),
         isVerbose: this.verbose,
       });
 
@@ -371,7 +372,7 @@ export class ForkedProcessTaskRunner {
       p.send({
         targetDescription: task.target,
         overrides: task.overrides,
-        taskGraph,
+        taskGraph: serializeTaskGraph(taskGraph),
         isVerbose: this.verbose,
       });
 
